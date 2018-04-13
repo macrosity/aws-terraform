@@ -29,13 +29,57 @@ data "aws_ami" "ubuntu" {
 
 data "aws_availability_zones" "all" {}
 
+resource "aws_elb" "nitro_elb" {
+  name               = "aws-elb-nitro-cluster"
+  availability_zones = ["${data.aws_availability_zones.all.names}"]
+  security_groups    = ["{$aws_security_group.elb_acl.id}"]
+
+  listener {
+    lb_port           = 80
+    lb_protocol       = "http"
+    instance_port     = "${var.http_port}"
+    instance_protocol = "http"
+  }
+
+  health_check {
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 3
+    target              = "HTTP:${var.http_port}/"
+    interval            = 30
+  }
+}
+
+resource "aws_security_group" "elb_acl" {
+  name = "elb-any"
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port = 0
+    to_port = 0
+    protocol = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  lifecycle {
+    create_before_destroy = true
+}
+
 resource "aws_autoscaling_group" "nitro" {
   launch_configuration = "$aws_launch_configuration.nitro.id"
+  availability_zones   = ["${data.aws_availability_zones.all.names}"]
+
+  load_balancers       = ["${data.aws_elb.nitro_elb.name}"]
+  health_check_type    = "ELB"
 
   min_size = 2
   max_size = 8
-
-  availability_zones = ["${data.aws_availability_zones.all.names}"]
 
   tag {
     key                 = "Name"
@@ -65,7 +109,7 @@ resource "aws_launch_configuration" "nitro" {
 }
 
 resource "aws_security_group" "web_acl" {
-  name = "web-server-any"
+  name = "web-any"
 
   ingress {
     from_port   = "${var.http_port}"
@@ -83,6 +127,6 @@ output "image_id" {
   value = "${data.aws_ami.ubuntu.id}"
 }
 
-output "public_ip" {
-  value = "${aws_instance.nitro.public_ip}"
+output "elb_dns_name" {
+  value = "${aws_elb.nitro_elb.dns_name}"
 }
