@@ -69,6 +69,7 @@ resource "aws_security_group" "elb_acl" {
 
   lifecycle {
     create_before_destroy = true
+  }
 }
 
 resource "aws_autoscaling_group" "nitro" {
